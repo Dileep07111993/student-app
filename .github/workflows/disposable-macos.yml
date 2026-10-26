@@ -1,0 +1,42 @@
+name: Disposable macOS Git filesystem audit
+on:
+  push:
+    branches:
+      - 'devprep-audit/mac-platform-20261026045448-ffa3b0fa'
+permissions:
+  contents: write
+jobs:
+  filesystem:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Run the exact reviewed fixture
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/devprep-audit"
+          set +e
+          bash lab/reviewed.sh > "$RUNNER_TEMP/devprep-audit/stdout.log" 2> "$RUNNER_TEMP/devprep-audit/stderr.log"
+          status=$?
+          set -e
+          printf '%s\n' "$status" > "$RUNNER_TEMP/devprep-audit/exit.txt"
+      - name: Record the exact result on the dedicated lab branch
+        if: always()
+        shell: bash
+        run: |
+          python3 lab/collect-result.py
+          git config --local user.name 'DevPrep Disposable Lab'
+          git config --local user.email 'lab@example.invalid'
+          git config --local commit.gpgsign false
+          if git ls-remote --exit-code --heads origin 'refs/heads/devprep-audit/mac-results-20261026045448-ffa3b0fa' > /dev/null; then
+            git fetch origin 'refs/heads/devprep-audit/mac-results-20261026045448-ffa3b0fa'
+            git switch -C 'devprep-audit/mac-results-20261026045448-ffa3b0fa' FETCH_HEAD
+          else
+            git switch -c 'devprep-audit/mac-results-20261026045448-ffa3b0fa'
+          fi
+          mkdir -p lab/results
+          cp "$RUNNER_TEMP/devprep-audit/result.json" 'lab/results/20261026045448.json'
+          git add 'lab/results/20261026045448.json'
+          git commit -m 'Record disposable macOS Git filesystem result'
+          git push origin 'HEAD:refs/heads/devprep-audit/mac-results-20261026045448-ffa3b0fa'
+          exit "$(cat "$RUNNER_TEMP/devprep-audit/exit.txt")"
